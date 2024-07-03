@@ -2,11 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
-from ..utils import nn_utils
+from ..utils import nn_utils, utils
 import os
 import socket
 import datetime
 from pathlib import Path
+import time
 
 from transformers import Adafactor, get_linear_schedule_with_warmup
 
@@ -111,68 +112,76 @@ class DefaultTrainer():
             if self.use_lr_schduler: self.configure_lr_scheduler(self.optim)
         
         
-        # self.scaler = torch.cuda.amp.GradScaler()
+        self.avg_epoch_time = utils.AverageMeter()
+        self.scaler = torch.cuda.amp.GradScaler()
         for self.epoch in range(self.epoch, self.max_epochs):
             self.fit_epoch()
-
+        print("Training finished {} minutes with each epoch taking {} minutes on average".format(self.avg_epoch_time.sum/60, self.avg_epoch_time.avg/60))
+        
         if self.write_sum:
             self.writer.flush()
 
 
     def fit_epoch(self):
         print('#########  Starting Epoch {} #########'.format(self.epoch + 1))
+        epoch_start_time = time.time()
         
         # ******** Training Part ********
         self.model.train()
-        epoch_train_loss = 0.0
+        epoch_train_loss = utils.AverageMeter()
         for i, batch in enumerate(self.train_dataloader):
-            
+            # print('Batch {} from {}'.format(i, self.num_train_batches))
             self.optim.zero_grad()
-            # with torch.cuda.amp.autocast():
-            #     loss = self.model.training_step(self.prepare_batch(batch))
+            with torch.cuda.amp.autocast():
+                loss = self.model.training_step(self.prepare_batch(batch))
             
-            # self.scaler.scale(loss).backward()
-            # self.scaler.step(self.optim)
-            # self.scaler.update()
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optim)
+            self.scaler.update()
             
-            loss = self.model.training_step(self.prepare_batch(batch))
-            loss.backward()
-            self.optim.step()
+            # loss = self.model.training_step(self.prepare_batch(batch))
+            # loss.backward()
+            # self.optim.step()
             if self.use_lr_schduler: self.lr_scheduler.step()
-            epoch_train_loss += loss.detach().cpu().numpy()
-                
+            epoch_train_loss.update(loss.detach().cpu().numpy())
+            
+        
+        print("Training of epoch {} took {} minutes".format(self.epoch + 1, (time.time() - epoch_start_time)/60))
+        self.avg_epoch_time.update(time.time() - epoch_start_time)
         if self.write_sum:
-                self.writer.add_scalar('Loss/Train', epoch_train_loss/self.num_train_batches, self.epoch+1)
+                self.writer.add_scalar('Loss/Train', epoch_train_loss.avg, self.epoch+1)
                 
-                
+        
                 
         # if self.use_lr_schduler:
         #     self.lr_scheduler.step(epoch_val_loss/self.num_val_batches)
         #     print(self.lr_scheduler.get_last_lr())
         
         # ******** Saving Checkpoint ********
-        # if (self.epoch+1) % 5 == 0:
-        #     print('Saving chekpoint...\n')
-        #     path = self.checkpoints_dir.joinpath('ckp.pt')
-        #     torch.save({
-        #         'model_state': self.model.state_dict(),
-        #         'optim_state': self.optim.state_dict(),
-        #         'epoch': self.epoch,
-        #         'lr_sch_state': self.lr_scheduler.state_dict() if self.use_lr_schduler else None
-        #     }, path)
+        if (self.epoch+1) % 1 == 0:
+            print('Saving chekpoint...\n')
+            path = self.checkpoints_dir.joinpath('ckp.pt')
+            torch.save({
+                'model_state': self.model.state_dict(),
+                'optim_state': self.optim.state_dict(),
+                'epoch': self.epoch,
+                'lr_sch_state': self.lr_scheduler.state_dict() if self.use_lr_schduler else None
+            }, path)
             
         # ******** Validation Part ********
         if self.val_dataloader is None or not self.do_val:
             return
         self.model.eval()
-        epoch_val_loss = 0.0
+        self.model.reset_metrics()
+        val_loss = utils.AverageMeter()
         for i, batch in enumerate(self.val_dataloader):
             with torch.no_grad():
                 loss = self.model.validation_step(self.prepare_batch(batch))
-                epoch_val_loss += loss.detach().cpu().numpy()
+                val_loss.update(loss.detach().cpu().numpy())
                 
         if self.write_sum:
-            self.writer.add_scalar('Loss/Val', epoch_val_loss/self.num_val_batches, self.epoch+1)
+            self.writer.add_scalar('Loss/Val', val_loss.avg, self.epoch+1)
+            self.writer.add_scalar('Acc/Val', self.model.get_metrics()['accuracy'], self.epoch+1)
         
             
         # # ******** Writing Summary and Stats to Tensorboard ********

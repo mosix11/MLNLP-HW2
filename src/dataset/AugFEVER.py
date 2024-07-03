@@ -3,7 +3,7 @@ import torch
 import datasets
 from torch.utils.data import Dataset, DataLoader
 from transformers import DataCollatorWithPadding
-
+from collections import Counter
 
 import os
 import sys
@@ -41,6 +41,7 @@ class AugFEVER():
         self.seed = seed
         
         self.label_map = {'CONTRADICTION': 0, 'NEUTRAL': 1, 'ENTAILMENT': 2}
+        self.reverse_label_map = {0: 'CONTRADICTION', 1: 'NEUTRAL', 2: 'ENTAILMENT'}
         self._init_loaders()
         
         
@@ -63,7 +64,7 @@ class AugFEVER():
         return tokenized_inputs
     
     def prepare_samples(self, samples):
-        pass # TODO implement this function for test time! it should get a sample or a batch of samples and retur the tokenized form of the inputs
+        pass # TODO implement this function for test time! it should get a sample or a batch of samples and return the tokenized form of the inputs
              # ready for inputing to the model and get the predictions.
         
     def _init_loaders(self):
@@ -105,3 +106,28 @@ class AugFEVER():
         data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
         return DataLoader(dataset, batch_size=self.batch_size, shuffle=True, collate_fn=data_collator, num_workers=self.num_workers, pin_memory=True) 
             
+            
+    def get_class_distribution(self):
+        splits = {
+            'train': Counter(),
+            'validation': Counter(),
+            'test': Counter()
+        }
+        for batch in self.get_train_dataloader():
+            labels = batch['labels'].numpy()
+            splits['train'].update([self.reverse_label_map[label] for label in labels])
+        
+        for batch in self.get_val_dataloader():
+            labels = batch['labels'].numpy()
+            splits['validation'].update([self.reverse_label_map[label] for label in labels])
+            
+        for batch in self.get_test_dataloader():
+            labels = batch['labels'].numpy()
+            splits['test'].update([self.reverse_label_map[label] for label in labels])
+            
+        splits['train'] = dict(splits['train'])
+        splits['validation'] = dict(splits['validation'])
+        splits['test'] = dict(splits['test'])
+        return splits
+            
+        
