@@ -63,6 +63,11 @@ class AugFEVER():
         tokenized_inputs['labels'] = [self.label_map[label] for label in labels]
         return tokenized_inputs
     
+    def decode_tokens(self, token_ids):
+        tokens = self.tokenizer.convert_ids_to_tokens(token_ids)
+        # decoded_text = self.tokenizer.convert_tokens_to_string(tokens)
+        return tokens
+    
     def prepare_samples(self, samples):
         pass # TODO implement this function for test time! it should get a sample or a batch of samples and return the tokenized form of the inputs
              # ready for inputing to the model and get the predictions.

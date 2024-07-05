@@ -8,6 +8,7 @@ import socket
 import datetime
 from pathlib import Path
 import time
+from tqdm import tqdm
 
 from transformers import Adafactor, get_linear_schedule_with_warmup
 
@@ -129,8 +130,7 @@ class DefaultTrainer():
         # ******** Training Part ********
         self.model.train()
         epoch_train_loss = utils.AverageMeter()
-        for i, batch in enumerate(self.train_dataloader):
-            # print('Batch {} from {}'.format(i, self.num_train_batches))
+        for i, batch in tqdm(enumerate(self.train_dataloader), total=self.num_train_batches, desc="Processing Training Batches"):
             self.optim.zero_grad()
             with torch.cuda.amp.autocast():
                 loss = self.model.training_step(self.prepare_batch(batch))
@@ -174,7 +174,7 @@ class DefaultTrainer():
         self.model.eval()
         self.model.reset_metrics()
         val_loss = utils.AverageMeter()
-        for i, batch in enumerate(self.val_dataloader):
+        for i, batch in tqdm(enumerate(self.val_dataloader), total=self.num_val_batches, desc="Processing Validation Batches"):
             with torch.no_grad():
                 loss = self.model.validation_step(self.prepare_batch(batch))
                 val_loss.update(loss.detach().cpu().numpy())

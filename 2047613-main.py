@@ -40,7 +40,7 @@ if __name__ == '__main__':
     if not root_dir.exists(): os.mkdir(root_dir)
     if not outputs_dir.exists(): os.mkdir(outputs_dir)
     if not weights_dir.exists(): os.mkdir(weights_dir)
-    trained_model_weights = weights_dir.joinpath('model.pt')
+    trained_model_weights = weights_dir.joinpath('base_nli_model.pt')
 
     model = DeBERTaNLI()
     tokenizer = model.get_tokenizer()
@@ -70,6 +70,7 @@ if __name__ == '__main__':
         evaluator = DefaultEvaluator(run_on_gpu=True)
         print(evaluator.evaluate(model, dataset))
         
+    
         
     # dl = dataset.get_train_dataloader()
     # for i, batch in enumerate(dl):

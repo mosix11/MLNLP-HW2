@@ -15,7 +15,7 @@ class DeBERTaNLI(nn.Module):
                  dropout:float = None) -> None:
         super().__init__()
         
-        self.deberta = DebertaV2Model.from_pretrained(checkpoint)
+        self.deberta = DebertaV2Model.from_pretrained(checkpoint, output_attentions=True)
         self.tokenizer = AutoTokenizer.from_pretrained(checkpoint, use_fast=False)
         
         self.num_classes = num_classes
@@ -38,7 +38,7 @@ class DeBERTaNLI(nn.Module):
         # )
         
         
-    def forward(self, input_ids, attention_mask, token_type_ids):
+    def forward(self, input_ids, attention_mask, token_type_ids, return_attention_scores=False):
         
         transformer_out = self.deberta(
             input_ids,
@@ -51,32 +51,63 @@ class DeBERTaNLI(nn.Module):
         encoded_seq = self.dropout(encoded_seq)
         
         logits = self.classifier(encoded_seq)
-        return logits
+        if return_attention_scores:
+            return logits, transformer_out.attentions # Shape of attention: (layers, batch, heads, seq_len, seq_len)
+        else: return logits
         
     def get_tokenizer(self):
         return self.tokenizer
         
-    def training_step(self, batch):
+    def training_step(self, batch, return_attention_scores=False):
+        
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
         token_type_ids = batch["token_type_ids"]
         labels = batch["labels"]
         
-        Y_hat = self(input_ids, attention_mask, token_type_ids)
-        return self.loss(Y_hat, labels)
+        
+        if return_attention_scores: 
+            Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
+            return self.loss(Y_hat, labels), attention_scores
+        else:
+            Y_hat = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
+            return self.loss(Y_hat, labels)
     
-    def validation_step(self, batch):
+    def validation_step(self, batch, return_attention_scores=False):
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
         token_type_ids = batch["token_type_ids"]
         labels = batch["labels"]
         
-        Y_hat = self(input_ids, attention_mask, token_type_ids)
-        self.metrics.update(Y_hat, labels)
-        return self.loss(Y_hat, labels)
+        if return_attention_scores: 
+            Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
+            self.metrics.update(Y_hat, labels)
+            return self.loss(Y_hat, labels), attention_scores
+        else:
+            Y_hat = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
+            self.metrics.update(Y_hat, labels)
+            return self.loss(Y_hat, labels)
+
     
     def loss(self, Y_hat, Y):
         return F.cross_entropy(Y_hat, Y)
+    
+    def predict(self, X, return_attention_scores=False):
+        self.eval()
+        input_ids = X["input_ids"]
+        attention_mask = X["attention_mask"]
+        token_type_ids = X["token_type_ids"]
+        
+        with torch.no_grad():
+            if return_attention_scores:
+                Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
+            else:
+                Y_hat = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
+
+        Y_hat = torch.argmax(Y_hat) if len(Y_hat) == 1 else torch.argmax(Y_hat, dim=1)
+        if return_attention_scores:
+            return Y_hat, attention_scores
+        else: return Y_hat
     
     def get_metrics(self):
         return {
