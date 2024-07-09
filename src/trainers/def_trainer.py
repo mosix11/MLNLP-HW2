@@ -139,10 +139,7 @@ class DefaultTrainer():
             self.scaler.step(self.optim)
             self.scaler.update()
             
-            # loss = self.model.training_step(self.prepare_batch(batch))
-            # loss.backward()
-            # self.optim.step()
-            if self.use_lr_schduler: self.lr_scheduler.step()
+            # if self.use_lr_schduler: self.lr_scheduler.step()
             epoch_train_loss.update(loss.detach().cpu().numpy())
             
         

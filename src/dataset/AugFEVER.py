@@ -27,7 +27,7 @@ class AugFEVER():
             raise RuntimeError("The root directory does not exist!")
         if not outputs_dir.exists():
             raise RuntimeError("The output directory does not exist!")
-        if load_augmented and not root_dir.joinpath('aug path').exists():
+        if load_augmented and not os.listdir(root_dir):
             raise RuntimeError("The augmented dataset does not exist! You should run the augmentation script first!!")
             
                 
@@ -74,15 +74,26 @@ class AugFEVER():
         
     def _init_loaders(self):
         if self.load_augmented:
-            dataset = datasets.Dataset.load_from_disk("path to augmented ds")
+            
+            dataset_train_aug = datasets.Dataset.load_from_disk(self.root_dir)
+            dataset_train_aug.remove_columns(['wsd', 'srl'])
+            dataset_orig = datasets.load_dataset("tommasobonomo/sem_augmented_fever_nli")
+            # print(dataset_train_aug.features, '\n\n')
+            # print(dataset_orig['train'].features, '\n\n')
+            train_set = datasets.concatenate_datasets([dataset_orig['train'].remove_columns(['wsd', 'srl']), dataset_train_aug])
+            val_set = dataset_orig['validation'].remove_columns(['wsd', 'srl'])
+            test_set = dataset_orig['test'].remove_columns(['wsd', 'srl'])
         else:
             dataset = datasets.load_dataset("tommasobonomo/sem_augmented_fever_nli")
+            train_set = dataset['train']
+            val_set = dataset['validation']
+            test_set = dataset['test']
+            
         if self.use_adv_test:
             adv_testset = datasets.load_dataset("iperbole/adversarial_fever_nli")
+            test_set = adv_testset['test']
         
-        train_set = dataset['train']
-        val_set = dataset['validation']
-        test_set = dataset['test'] if not self.use_adv_test else adv_testset['test']
+       
 
         # def check_long_sequences(dataset, max_length=512):
         #     long_sequences = []
