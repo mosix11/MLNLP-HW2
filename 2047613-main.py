@@ -59,7 +59,7 @@ if __name__ == '__main__':
                        seed=11)
 
     if training_mode:
-        trainer = DefaultTrainer(max_epochs=2,
+        trainer = DefaultTrainer(max_epochs=3,
                                 lr=1e-5,
                                 optimizer_type="adamw",
                                 run_on_gpu=True,
