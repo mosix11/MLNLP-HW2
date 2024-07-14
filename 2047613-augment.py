@@ -16,12 +16,13 @@ import re
 import random
 import nltk
 from nltk.corpus import wordnet as wn
+from tqdm import tqdm
 
 cpu = nn_utils.get_cpu_device()
 gpu = nn_utils.get_gpu_device()
 
 weights_dir = Path('./weights').absolute()
-nli_model_weights = weights_dir.joinpath('base_nli_model.pt')
+nli_model_weights = weights_dir.joinpath('model.pt')
 
 
 
@@ -491,7 +492,6 @@ def augment_sample(nli_model, stsb_model, sample):
             
     return augumented_sample
 
-# def get_important_words_annotation_index(sample, premise_word_list, hypothesis_word_list):
 
 def clean_print(data_sample):
     print('\nPremise: {}\nHypothesis: {}\nLabel: {}\n'.format(data_sample['premise'], data_sample['hypothesis'], data_sample['label']))
@@ -500,8 +500,6 @@ def clean_print(data_sample):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    # parser.add_argument("mode", help="Specify whether to train the model or test it. Options [\'train\', \'test\']", type=str, default='train')
-    # parser.add_argument("-d", "--data", help="Which dataset to use train or test the model. Options [\'original\', \'adversarial\']", type=str, default='original')
     args = parser.parse_args()
     nltk.download('wordnet')
     full_dataset = datasets.load_dataset("tommasobonomo/sem_augmented_fever_nli")
@@ -510,96 +508,19 @@ if __name__ == '__main__':
     stsb_model = CrossEncoder("cross-encoder/stsb-roberta-base") # cross-encoder/stsb-roberta-large
     stsb_model.model.to(gpu)
     
-    # sentence1 = "Coding is so hard."
-    # sentence2 = paraphrase(sentence1)
-    # get_sentences_similarity(stsb_model, 'Coding is so hard.', 'Writing computer code is extremely easy.')
-    dataset = HFDatasetNLI(train_set, nli_model.get_tokenizer())
-    
-    # sample_idx = 0
-    # orig_sample = dataset[sample_idx]
-    # aug_sample = copy.deepcopy(orig_sample)
-    
-    # orig_sample_t = dataset.tokenize_sample(orig_sample, device=gpu)
-    # aug_sample['hypothesis'] = paraphrase(aug_sample['hypothesis'])
-    # aug_sample_t = dataset.tokenize_sample(orig_sample, device=gpu)
-    
-    # pred_o, _ = get_nli_prediction(nli_model, orig_sample_t)
-    # pred_a, _ = get_nli_prediction(nli_model, aug_sample_t)
-    
-    # clean_print(orig_sample)
-    # print("Predicted label for original sample: ", pred_o)
-    # clean_print(aug_sample)
-    # print("Predicted label for augmented sample: ", pred_a)
-    # sample_tokenized = dataset.getitem_tokenized(sample_idx, device=gpu)
-    
-    
-    # test_sample = dataset[0]
-    # # print(test_sample)
-    # clean_print(test_sample)
-    # # prem_tokens, hyp_tokens = get_top_k_important_tokens_from_nli_model(nli_model, dataset.getitem_tokenized(2000, device=gpu), dataset.tokenizer, num_layers=4, k=4)
-    # # print(dataset.decode_tokens([item[0] for item in prem_tokens]))
-    # # print(dataset.decode_tokens([item[0] for item in hyp_tokens]))
 
-    
-    # prem_tokens, hyp_tokens = get_top_k_tokens_contributing_to_cls(nli_model, dataset.getitem_tokenized(0, device=gpu), dataset.tokenizer, num_layers=4, k=4)
-    
-    # print(dataset.decode_tokens([item[0] for item in prem_tokens]))
-    # print(prem_tokens)
-    # print(dataset.decode_tokens([item[0] for item in hyp_tokens]))
-    # print(hyp_tokens)
-    
-    # prem_top_words, hyp_top_words = get_full_word_of_token(dataset.get_tokenizer(), test_sample, prem_tokens, hyp_tokens)
-    # print(prem_top_words)
-    # print(hyp_top_words)
-    # # print(test_sample['hypothesis'].find(out[1][1][0]))
-    # print(find_wsd_srl_for_word(test_sample, hyp_top_words[0], p_h='h'))
-    
-    
-    # print(replace_with_antonym_llama('Marie Curie was naturalized-German.', 'naturalized-German'))
-    
-    cnt = 0
-    # tqdm(enumerate(self.train_dataloader), total=self.num_train_batches, desc="Processing Training Batches")
+    dataset = HFDatasetNLI(train_set, nli_model.get_tokenizer())
+
     augmented_ds = []
-    for i in range(len(dataset)):
-        print('Processing sample ', i)
+    for i, sample in tqdm(enumerate(dataset), total=len(dataset), desc="Aumenting Samples"):
         aug_sample = augment_sample(nli_model, stsb_model, dataset[i])
         augmented_ds.append(aug_sample)
-        # pred, _ = get_nli_prediction(nli_model, dataset.tokenize_sample(aug_sample, device=gpu))
-        # if dataset.get_label(pred) != aug_sample['label']:
-        #     clean_print(dataset[i])
-        #     clean_print(aug_sample)
-        #     print('NLI prediction is ', dataset.get_label(pred))
-        
+
     augmented_dataset = datasets.Dataset.from_list(augmented_ds)
     augmented_dataset.save_to_disk('./data/')
-    # combined_dataset = datasets.concatenate_datasets([dataset.dataset, augmented_dataset])
-    # combined_dataset.save_to_disk('./data/')
 
-    print('totla count is {}'.format(cnt))
-    
-    
-    # for i in range(len(dataset)):
-        # num_prem_tokens = len(dataset[i]['premise'].split(' '))
-        # print(dataset[i]['premise'].split(' '))
-        # num_hyp_tokens = len(dataset[i]['hypothesis'].split(' '))
-        # print(dataset[i]['hypothesis'].split(' '))
-        # wsd_num_prem_items = len(dataset[i]['wsd']['premise'])
-        # print([item['text'] for item in dataset[i]['wsd']['premise']])
-        # wsd_num_hyp_items = len(dataset[i]['wsd']['hypothesis'])
-        # print([item['text'] for item in dataset[i]['wsd']['hypothesis']])
-        # print(num_prem_tokens, wsd_num_prem_items)
-        # print(num_hyp_tokens, wsd_num_hyp_items)
-    
 
     
-    # clean_print(dataset[2000])
-    # print(len(dataset[2000]['premise'].split(' ')))
     
-    # sentence1 = "Hello tokenization randomization"
-    # sentence2 = "Eating food characterization"
-    # inputs = nli_model.tokenizer(sentence1, sentence2)
-    # print(inputs)
-    # print(dataset.decode_tokens(inputs['input_ids']))
-    
-    
+
     
