@@ -11,6 +11,8 @@ from src.dataset import AugFEVER
 from src.models import DeBERTaNLI
 from src.trainers import DefaultTrainer, DefaultEvaluator
 
+torch.backends.cudnn.benchmark = True
+
 def parse_args(args):
     training_mode = False
     use_augmented_trainingset = False
@@ -40,10 +42,11 @@ if __name__ == '__main__':
     if not root_dir.exists(): os.mkdir(root_dir)
     if not outputs_dir.exists(): os.mkdir(outputs_dir)
     if not weights_dir.exists(): os.mkdir(weights_dir)
-    base_trained_model_weights = weights_dir.joinpath('base_nli_model.pt')
-    aug_trained_model_weights = weights_dir.joinpath('aug_nli_model.pt')
+    # base_trained_model_weights = weights_dir.joinpath('base_nli_model.pt')
+    # aug_trained_model_weights = weights_dir.joinpath('aug_nli_model.pt')
+    trained_model_weights = weights_dir.joinpath('model.pt')
 
-    model = DeBERTaNLI()
+    model = DeBERTaNLI(dropout=0.3)
     tokenizer = model.get_tokenizer()
     training_mode, use_augmented_trainingset, use_adv_testset = parse_args(args)
     dataset = AugFEVER(tokenizer,
@@ -54,28 +57,30 @@ if __name__ == '__main__':
                        batch_size=24,
                        num_workers=4,
                        seed=11)
-    
+
     if training_mode:
-        trainer = DefaultTrainer(max_epochs=1,
+        trainer = DefaultTrainer(max_epochs=2,
                                 lr=1e-5,
                                 optimizer_type="adamw",
                                 run_on_gpu=True,
                                 )
         trainer.fit(model, dataset, resume=False)
         
-        if use_augmented_trainingset: torch.save(model, aug_trained_model_weights)
-        else: torch.save(model, base_trained_model_weights)
+        # if use_augmented_trainingset: torch.save(model, aug_trained_model_weights)
+        # else: torch.save(model, base_trained_model_weights)
+        torch.save(model, trained_model_weights)
     else:
-        if use_augmented_trainingset:
-            if not aug_trained_model_weights.exists():
-                raise RuntimeError('Model weights not found! You should train the model first!')
-            # model = torch.load(aug_trained_model_weights)
-            model = torch.load(base_trained_model_weights)
-        else:
-            if not base_trained_model_weights.exists():
-                raise RuntimeError('Model weights not found! You should train the model first!')
-            model = torch.load(base_trained_model_weights)
-            # model = torch.load(aug_trained_model_weights)
+        # if use_augmented_trainingset:
+        #     if not aug_trained_model_weights.exists():
+        #         raise RuntimeError('Model weights not found! You should train the model first!')
+        #     model = torch.load(aug_trained_model_weights)
+        #     # model = torch.load(base_trained_model_weights)
+        # else:
+        #     if not base_trained_model_weights.exists():
+        #         raise RuntimeError('Model weights not found! You should train the model first!')
+        #     model = torch.load(base_trained_model_weights)
+        #     # model = torch.load(aug_trained_model_weights)
+        model = torch.load(trained_model_weights)
         model.eval()
         evaluator = DefaultEvaluator(run_on_gpu=True)
         print(evaluator.evaluate(model, dataset))

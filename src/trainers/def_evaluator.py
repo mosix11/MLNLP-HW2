@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
+import seaborn as sns
 from ..utils import nn_utils, utils
 import os
 import socket
@@ -47,11 +49,22 @@ class DefaultEvaluator():
         
         self.model.eval()
         self.model.reset_metrics()
+        self.model.reset_confusion_matrix()
         loss = utils.AverageMeter()
         with torch.no_grad():
             for i, batch in tqdm(enumerate(self.test_dataloader), total=self.num_test_batches, desc="Processing Batches"):
-                b_loss = self.model.validation_step(self.prepare_batch(batch))
+                b_loss, _ = self.model.validation_step(self.prepare_batch(batch))
                 loss.update(b_loss.detach().cpu().numpy())
         
-        return loss.avg, self.model.get_metrics() 
+        cm = self.model.get_confusion_matrix().detach().cpu().numpy()
+        figure = plt.figure(figsize=(8, 8))
+        heatmap = sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['CONTRADICTION', 'NEUTRAL', 'ENTAILMENT'], yticklabels=['CONTRADICTION', 'NEUTRAL', 'ENTAILMENT'])
+        heatmap.xaxis.set_ticks_position('top')
+        heatmap.xaxis.set_label_position('top')
+        plt.xlabel('Predicted')
+        plt.ylabel('True')
+        # plt.title('Confusion Matrix')
+        figure.savefig('outputs/cm.png', dpi=300, bbox_inches='tight')
+        plt.close(figure)
+        return loss.avg, self.model.get_metrics(), self.model.get_confusion_matrix()
         

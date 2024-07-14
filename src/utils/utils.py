@@ -365,3 +365,26 @@ class AverageMeter(object):
 
     def __repr__(self):
         return '{:.3f} ({:.3f})'.format(self.val, self.avg)
+    
+def plot_to_tensorboard(writer, fig, tag, step):
+    """
+    Log a Matplotlib figure to TensorBoard.
+
+    Parameters:
+    - writer: Instance of SummaryWriter.
+    - fig: Matplotlib figure.
+    - tag: Name of the image in TensorBoard.
+    - step: Training step or epoch.
+    """
+    # Convert Matplotlib figure to a numpy array
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    img = Image.open(buf)
+    img_array = np.array(img)
+    
+    # Convert numpy array to tensor
+    img_tensor = torch.tensor(img_array).permute(2, 0, 1)
+    
+    # Add image to TensorBoard
+    writer.add_image(tag, img_tensor, step)

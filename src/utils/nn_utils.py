@@ -7,6 +7,7 @@ import collections
 from . import utils
 from torch.utils.data import Dataset
 from typing import Any
+from sklearn.metrics import confusion_matrix
 
 def get_gpu_device():
     if torch.cuda.is_available():
@@ -17,6 +18,69 @@ def get_gpu_device():
     
 def get_cpu_device():
     return torch.device('cpu')
+
+
+class ClassifierMetrics:
+    def __init__(self, num_classes):
+        self.num_classes = num_classes
+        self.reset()
+
+    def reset(self):
+        self.correct = 0
+        self.total = 0
+        self.true_positives = torch.zeros(self.num_classes)
+        self.predicted_positives = torch.zeros(self.num_classes)
+        self.actual_positives = torch.zeros(self.num_classes)
+
+    def update(self, preds, labels):
+        _, preds_max = torch.max(preds, 1)
+        self.correct += (preds_max == labels).sum().item()
+        self.total += labels.size(0)
+
+        for i in range(self.num_classes):
+            self.true_positives[i] += ((preds_max == i) & (labels == i)).sum().item()
+            self.predicted_positives[i] += (preds_max == i).sum().item()
+            self.actual_positives[i] += (labels == i).sum().item()
+
+    def accuracy(self):
+        return self.correct / self.total
+
+    def precision(self):
+        precision_per_class = self.true_positives / (self.predicted_positives + 1e-10)
+        return precision_per_class.mean().item()
+
+    def recall(self):
+        recall_per_class = self.true_positives / (self.actual_positives + 1e-10)
+        return recall_per_class.mean().item()
+
+    def f1_score(self):
+        prec = self.precision()
+        rec = self.recall()
+        return 2 * (prec * rec) / (prec + rec + 1e-10)
+
+class ConfusionMatrixTracker:
+    def __init__(self, num_classes):
+        self.num_classes = num_classes
+        self.confusion_matrix = torch.zeros((num_classes, num_classes), dtype=torch.int32)
+
+    def update(self, predicted_labels, true_labels):
+        # Ensure labels are detached, moved to CPU, and converted to numpy arrays
+        true_labels_np = true_labels.detach().cpu().numpy()
+        predicted_labels_np = predicted_labels.detach().cpu().numpy()
+        if len(true_labels_np.shape) > 1 : true_labels_np.squeeze()
+        if len(predicted_labels_np.shape) > 1 : predicted_labels_np.squeeze()
+        
+        # Compute the confusion matrix for the current batch
+        batch_conf_matrix = confusion_matrix(true_labels_np, predicted_labels_np, labels=range(self.num_classes))
+        
+        # Convert numpy confusion matrix to a torch tensor and update the overall confusion matrix
+        self.confusion_matrix += torch.tensor(batch_conf_matrix, dtype=torch.int32)
+
+    def reset(self):
+        self.confusion_matrix = torch.zeros((self.num_classes, self.num_classes), dtype=torch.int32)
+
+    def get_confusion_matrix(self):
+        return self.confusion_matrix
 
 class DataModule():
 

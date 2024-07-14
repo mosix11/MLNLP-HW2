@@ -9,7 +9,8 @@ import datetime
 from pathlib import Path
 import time
 from tqdm import tqdm
-
+import matplotlib.pyplot as plt
+import seaborn as sns
 from transformers import Adafactor, get_linear_schedule_with_warmup
 
 class DefaultTrainer():
@@ -133,13 +134,13 @@ class DefaultTrainer():
         for i, batch in tqdm(enumerate(self.train_dataloader), total=self.num_train_batches, desc="Processing Training Batches"):
             self.optim.zero_grad()
             with torch.cuda.amp.autocast():
-                loss = self.model.training_step(self.prepare_batch(batch))
+                loss, _ = self.model.training_step(self.prepare_batch(batch))
             
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optim)
             self.scaler.update()
             
-            # if self.use_lr_schduler: self.lr_scheduler.step()
+            if self.use_lr_schduler: self.lr_scheduler.step()
             epoch_train_loss.update(loss.detach().cpu().numpy())
             
         
@@ -150,9 +151,6 @@ class DefaultTrainer():
                 
         
                 
-        # if self.use_lr_schduler:
-        #     self.lr_scheduler.step(epoch_val_loss/self.num_val_batches)
-        #     print(self.lr_scheduler.get_last_lr())
         
         # ******** Saving Checkpoint ********
         if (self.epoch+1) % 1 == 0:
@@ -170,28 +168,24 @@ class DefaultTrainer():
             return
         self.model.eval()
         self.model.reset_metrics()
+        self.model.reset_confusion_matrix()
         val_loss = utils.AverageMeter()
         for i, batch in tqdm(enumerate(self.val_dataloader), total=self.num_val_batches, desc="Processing Validation Batches"):
             with torch.no_grad():
-                loss = self.model.validation_step(self.prepare_batch(batch))
+                loss, _ = self.model.validation_step(self.prepare_batch(batch))
                 val_loss.update(loss.detach().cpu().numpy())
                 
         if self.write_sum:
             self.writer.add_scalar('Loss/Val', val_loss.avg, self.epoch+1)
             self.writer.add_scalar('Acc/Val', self.model.get_metrics()['accuracy'], self.epoch+1)
+            cm = self.model.get_confusion_matrix().detach().cpu().numpy()
+            figure = plt.figure(figsize=(8, 8))
+            heatmap = sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['CONTRADICTION', 'NEUTRAL', 'ENTAILMENT'], yticklabels=['CONTRADICTION', 'NEUTRAL', 'ENTAILMENT'])
+            heatmap.xaxis.set_ticks_position('top')
+            heatmap.xaxis.set_label_position('top')
+            plt.xlabel('Predicted')
+            plt.ylabel('True')
+            plt.title('Confusion Matrix')
+            self.writer.add_figure('Confusion Matrix', figure, global_step=self.epoch+1)
+            plt.close(figure)
         
-            
-        # # ******** Writing Summary and Stats to Tensorboard ********
-        # if self.write_sum:
-        #     self.writer.add_scalar('Loss/Val', epoch_val_loss/self.num_val_batches, self.epoch+1)
-        #     if (self.epoch+1) % 5 == 0:
-        #         sample_batch = None
-        #         for i, batch in enumerate(self.val_dataloader):
-        #             sample_batch = batch
-        #             break
-        #         sample_reconstructed = self.model.predict(self.prepare_batch(sample_batch)).to(sample_batch.device)
-        #         # change the range from -1 to 1 to 0 to 1
-        #         sample_batch = (sample_batch + 1) / 2
-        #         sample_reconstructed = (sample_reconstructed + 1) / 2
-        #         combined_images = torch.cat([sample_batch, sample_reconstructed], dim=3)  # dim=3 stacks them horizontally
-        #         self.writer.add_images('Val Image Reconstruction', combined_images, global_step=0)

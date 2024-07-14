@@ -75,7 +75,7 @@ def nli_using_llama(premise, hypothesis):
     return response['response'].strip(string.punctuation)
 
 def get_nli_prediction(model, sample):
-    pred, att_scores = model.predict(sample, return_attention_scores=True)
+    pred, att_scores = model.predict(sample)
     pred = pred.detach().cpu().item()
     att_scores = [las.detach().cpu() for las in att_scores]
     return pred, att_scores
@@ -369,95 +369,94 @@ def augment_sample(nli_model, stsb_model, sample):
             cnt +=1
             if cnt > 2:
                 break
-        if wsd == None:
-            rnd_number = random.random()
-            if rnd_number < 0.5:
-                new_hyp = replace_with_synonym_llama(sample['hypothesis'], hyp_word[0])
-                similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                cnt = 0
-                while similarity_score_hyp < 0.8:
-                    # print('Hypothesis synonym similarity score loop!')
-                    new_hyp = replace_with_synonym_llama(sample['hypothesis'], hyp_word[0])
-                    similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                    cnt +=1
-                    if cnt > 0:
-                        break
-                aug_sample['premise'] = new_prem
-                aug_sample['hypothesis'] = new_hyp
-            else:
-                # Augument the sample with parahprasing the premise and changing the most important word with its antonym and reversing the label
-                new_hyp = replace_with_antonym_llama(sample['hypothesis'], hyp_word[0])
-                similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                cnt = 0
-                while similarity_score_hyp > 0.50:
-                    # print('Hypothesis antonym similarity score loop!')
-                    new_hyp = replace_with_antonym_llama(sample['hypothesis'], hyp_word[0])
-                    similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                    cnt +=1
-                    if cnt > 0:
-                        break
-                aug_sample['premise'] = new_prem
-                aug_sample['hypothesis'] = new_hyp
-                if sample['label'] == 'ENTAILMENT':
-                    aug_sample['label'] = 'CONTRADICTION'
-                elif sample['label'] == 'CONTRADICTION':
-                    aug_sample['label'] = 'ENTAILMENT'
+        # if wsd == None:
+        #     rnd_number = random.random()
+        #     if rnd_number < 0.5:
+        #         new_hyp = replace_with_synonym_llama(sample['hypothesis'], hyp_word[0])
+        #         similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
+        #         cnt = 0
+        #         while similarity_score_hyp < 0.8:
+        #             # print('Hypothesis synonym similarity score loop!')
+        #             new_hyp = replace_with_synonym_llama(sample['hypothesis'], hyp_word[0])
+        #             similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
+        #             cnt +=1
+        #             if cnt > 0:
+        #                 break
+        #         aug_sample['premise'] = new_prem
+        #         aug_sample['hypothesis'] = new_hyp
+        #     else:
+        #         # Augument the sample with parahprasing the premise and changing the most important word with its antonym and reversing the label
+        #         new_hyp = replace_with_antonym_llama(sample['hypothesis'], hyp_word[0])
+        #         similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
+        #         cnt = 0
+        #         while similarity_score_hyp > 0.50:
+        #             # print('Hypothesis antonym similarity score loop!')
+        #             new_hyp = replace_with_antonym_llama(sample['hypothesis'], hyp_word[0])
+        #             similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
+        #             cnt +=1
+        #             if cnt > 0:
+        #                 break
+        #         aug_sample['premise'] = new_prem
+        #         aug_sample['hypothesis'] = new_hyp
+        #         if sample['label'] == 'ENTAILMENT':
+        #             aug_sample['label'] = 'CONTRADICTION'
+        #         elif sample['label'] == 'CONTRADICTION':
+        #             aug_sample['label'] = 'ENTAILMENT'
             
-            return aug_sample
-        else:
+        #     return aug_sample
+        # else:
             # nltk_ID = wsd['nltkSynset']
             # word_info = get_detailed_synset_info(nltk_ID, hyp_word[0])
             # print(hyp_word)
             # print(word_info)
-            new_prem = paraphrase(sample['premise'])
-            
-            rnd_number = random.random()
-            if rnd_number < 0.1:
+        
+        rnd_number = random.random()
+        if rnd_number < 0.1:
+            new_hyp = replace_with_hypernym_llama(sample['hypothesis'], hyp_word[0])
+            similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
+            cnt = 0
+            while similarity_score_hyp < 0.75:
+                # print('Hypothesis hypernym similarity score loop!')
                 new_hyp = replace_with_hypernym_llama(sample['hypothesis'], hyp_word[0])
                 similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                cnt = 0
-                while similarity_score_hyp < 0.75:
-                    # print('Hypothesis hypernym similarity score loop!')
-                    new_hyp = replace_with_hypernym_llama(sample['hypothesis'], hyp_word[0])
-                    similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                    cnt +=1
-                    if cnt > 0:
-                        break
-                aug_sample['premise'] = new_prem
-                aug_sample['hypothesis'] = new_hyp
-            elif rnd_number >= 0.1 and rnd_number<= 0.5:
+                cnt +=1
+                if cnt > 0:
+                    break
+            aug_sample['premise'] = new_prem
+            aug_sample['hypothesis'] = new_hyp
+        elif rnd_number >= 0.1 and rnd_number<= 0.5:
+            new_hyp = replace_with_antonym_llama(sample['hypothesis'], hyp_word[0])
+            similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
+            cnt = 0
+            while similarity_score_hyp > 0.50:
+                # print('Hypothesis antonym similarity score loop!')
                 new_hyp = replace_with_antonym_llama(sample['hypothesis'], hyp_word[0])
                 similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                cnt = 0
-                while similarity_score_hyp > 0.50:
-                    # print('Hypothesis antonym similarity score loop!')
-                    new_hyp = replace_with_antonym_llama(sample['hypothesis'], hyp_word[0])
-                    similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                    cnt +=1
-                    if cnt > 0:
-                        break
-                aug_sample['premise'] = new_prem
-                aug_sample['hypothesis'] = new_hyp
-                if sample['label'] == 'ENTAILMENT':
-                    aug_sample['label'] = 'CONTRADICTION'
-                elif sample['label'] == 'CONTRADICTION':
-                    aug_sample['label'] = 'ENTAILMENT'
-            else:
+                cnt +=1
+                if cnt > 0:
+                    break
+            aug_sample['premise'] = new_prem
+            aug_sample['hypothesis'] = new_hyp
+            if sample['label'] == 'ENTAILMENT':
+                aug_sample['label'] = 'CONTRADICTION'
+            elif sample['label'] == 'CONTRADICTION':
+                aug_sample['label'] = 'ENTAILMENT'
+        else:
+            new_hyp = replace_with_synonym_llama(sample['hypothesis'], hyp_word[0])
+            similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
+            cnt = 0
+            while similarity_score_hyp < 0.75:
+                # print('Hypothesis synonym similarity score loop!')
                 new_hyp = replace_with_synonym_llama(sample['hypothesis'], hyp_word[0])
                 similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                cnt = 0
-                while similarity_score_hyp < 0.8:
-                    # print('Hypothesis synonym similarity score loop!')
-                    new_hyp = replace_with_synonym_llama(sample['hypothesis'], hyp_word[0])
-                    similarity_score_hyp = get_sentences_similarity(stsb_model, sample['hypothesis'], new_hyp)
-                    cnt +=1
-                    if cnt > 0:
-                        break
-                aug_sample['premise'] = new_prem
-                aug_sample['hypothesis'] = new_hyp
-            
+                cnt +=1
+                if cnt > 0:
+                    break
+            aug_sample['premise'] = new_prem
+            aug_sample['hypothesis'] = new_hyp
+        
 
-            return aug_sample
+        return aug_sample
                             
     def augment_by_prem(sample, was, srl, prem_word):
         pass

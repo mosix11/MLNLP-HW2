@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from transformers import DebertaV2Model, AutoTokenizer, DebertaV2ForSequenceClassification
 from transformers.models.deberta_v2.modeling_deberta_v2 import ContextPooler, StableDropout
 
-
+from ..utils import nn_utils
 
 class DeBERTaNLI(nn.Module):
     
@@ -19,6 +19,7 @@ class DeBERTaNLI(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(checkpoint, use_fast=False)
         
         self.num_classes = num_classes
+        
         self.pooler = ContextPooler(self.deberta.config)
         output_dim = self.pooler.output_dim
         
@@ -27,38 +28,43 @@ class DeBERTaNLI(nn.Module):
         drop_out = self.deberta.config.hidden_dropout_prob if dropout is None else dropout
         self.dropout = StableDropout(drop_out)
         
-        self.metrics = Metrics(self.num_classes)
-        
         # self.classifier = nn.Sequential(
         #     nn.Dropout(p=0.1),
-        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.Linear(self.deberta.config.hidden_size, self.deberta.config.hidden_size),
         #     nn.ReLU(),
         #     nn.Dropout(p=0.1),
-        #     nn.Linear(hidden_size, num_labels)
+        #     nn.Linear(self.deberta.config.hidden_size, self.num_classes)
         # )
         
+        self.metrics = nn_utils.ClassifierMetrics(self.num_classes)
+        self.confusion_matrix = nn_utils.ConfusionMatrixTracker(self.num_classes)
         
-    def forward(self, input_ids, attention_mask, token_type_ids, return_attention_scores=False):
+        
+        
+    def forward(self, input_ids, attention_mask, token_type_ids):
         
         transformer_out = self.deberta(
             input_ids,
             token_type_ids=token_type_ids,
             attention_mask=attention_mask
         )
-        
+   
+        # encoded_seq = transformer_out.last_hidden_state
         encoded_seq = transformer_out[0]
+        # pooled_output = encoded_seq[:, 0, :]
         encoded_seq = self.pooler(encoded_seq)
         encoded_seq = self.dropout(encoded_seq)
         
+        # logits = self.classifier(pooled_output)
         logits = self.classifier(encoded_seq)
-        if return_attention_scores:
-            return logits, transformer_out.attentions # Shape of attention: (layers, batch, heads, seq_len, seq_len)
-        else: return logits
+        
+        return logits, transformer_out.attentions # Shape of attention: (layers, batch, heads, seq_len, seq_len)
+        
         
     def get_tokenizer(self):
         return self.tokenizer
         
-    def training_step(self, batch, return_attention_scores=False):
+    def training_step(self, batch):
         
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
@@ -66,48 +72,42 @@ class DeBERTaNLI(nn.Module):
         labels = batch["labels"]
         
         
-        if return_attention_scores: 
-            Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
-            return self.loss(Y_hat, labels), attention_scores
-        else:
-            Y_hat = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
-            return self.loss(Y_hat, labels)
+        
+        Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids)
+        return self.loss(Y_hat, labels), attention_scores
+
     
-    def validation_step(self, batch, return_attention_scores=False):
+    def validation_step(self, batch):
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
         token_type_ids = batch["token_type_ids"]
         labels = batch["labels"]
         
-        if return_attention_scores: 
-            Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
-            self.metrics.update(Y_hat, labels)
-            return self.loss(Y_hat, labels), attention_scores
-        else:
-            Y_hat = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
-            self.metrics.update(Y_hat, labels)
-            return self.loss(Y_hat, labels)
+
+        Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids)
+        self.metrics.update(Y_hat, labels)
+        self.confusion_matrix.update(torch.argmax(Y_hat, dim=1), labels)
+        return self.loss(Y_hat, labels), attention_scores
+
 
     
     def loss(self, Y_hat, Y):
         return F.cross_entropy(Y_hat, Y)
     
-    def predict(self, X, return_attention_scores=False):
+    def predict(self, X):
         self.eval()
         input_ids = X["input_ids"]
         attention_mask = X["attention_mask"]
         token_type_ids = X["token_type_ids"]
         
         with torch.no_grad():
-            if return_attention_scores:
-                Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
-            else:
-                Y_hat = self(input_ids, attention_mask, token_type_ids, return_attention_scores)
+
+            Y_hat, attention_scores = self(input_ids, attention_mask, token_type_ids)
 
         Y_hat = torch.argmax(Y_hat) if len(Y_hat) == 1 else torch.argmax(Y_hat, dim=1)
-        if return_attention_scores:
-            return Y_hat, attention_scores
-        else: return Y_hat
+
+        return Y_hat, attention_scores
+
     
     def get_metrics(self):
         return {
@@ -117,8 +117,14 @@ class DeBERTaNLI(nn.Module):
             'f1_score': self.metrics.f1_score()
         }
     
+    def get_confusion_matrix(self):
+        return self.confusion_matrix.get_confusion_matrix()
+    
     def reset_metrics(self):
-        self.metrics = Metrics(self.num_classes)
+        self.metrics = nn_utils.ClassifierMetrics(self.num_classes)
+        
+    def reset_confusion_matrix(self):
+        self.confusion_matrix.reset()
     # def accuracy(self, preds, labels):
     #     return torch.mean((torch.argmax(preds, dim=1) == labels).to(torch.float64))
 
@@ -156,40 +162,3 @@ class DeBERTaNLI(nn.Module):
     #     f1_per_class = 2 * (prec * rec) / (prec + rec + 1e-10)
     #     return f1_per_class
     
-class Metrics:
-    def __init__(self, num_classes):
-        self.num_classes = num_classes
-        self.reset()
-
-    def reset(self):
-        self.correct = 0
-        self.total = 0
-        self.true_positives = torch.zeros(self.num_classes)
-        self.predicted_positives = torch.zeros(self.num_classes)
-        self.actual_positives = torch.zeros(self.num_classes)
-
-    def update(self, preds, labels):
-        _, preds_max = torch.max(preds, 1)
-        self.correct += (preds_max == labels).sum().item()
-        self.total += labels.size(0)
-
-        for i in range(self.num_classes):
-            self.true_positives[i] += ((preds_max == i) & (labels == i)).sum().item()
-            self.predicted_positives[i] += (preds_max == i).sum().item()
-            self.actual_positives[i] += (labels == i).sum().item()
-
-    def accuracy(self):
-        return self.correct / self.total
-
-    def precision(self):
-        precision_per_class = self.true_positives / (self.predicted_positives + 1e-10)
-        return precision_per_class.mean().item()
-
-    def recall(self):
-        recall_per_class = self.true_positives / (self.actual_positives + 1e-10)
-        return recall_per_class.mean().item()
-
-    def f1_score(self):
-        prec = self.precision()
-        rec = self.recall()
-        return 2 * (prec * rec) / (prec + rec + 1e-10)

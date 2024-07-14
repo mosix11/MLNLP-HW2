@@ -76,18 +76,18 @@ class AugFEVER():
         if self.load_augmented:
             
             dataset_train_aug = datasets.Dataset.load_from_disk(self.root_dir)
-            dataset_train_aug.remove_columns(['wsd', 'srl'])
             dataset_orig = datasets.load_dataset("tommasobonomo/sem_augmented_fever_nli")
             # print(dataset_train_aug.features, '\n\n')
             # print(dataset_orig['train'].features, '\n\n')
-            train_set = datasets.concatenate_datasets([dataset_orig['train'].remove_columns(['wsd', 'srl']), dataset_train_aug])
+            train_set = datasets.concatenate_datasets([dataset_train_aug.remove_columns(['wsd', 'srl']), dataset_orig['train'].remove_columns(['wsd', 'srl'])])
+            # train_set = dataset_train_aug.remove_columns(['wsd', 'srl'])
             val_set = dataset_orig['validation'].remove_columns(['wsd', 'srl'])
             test_set = dataset_orig['test'].remove_columns(['wsd', 'srl'])
         else:
             dataset = datasets.load_dataset("tommasobonomo/sem_augmented_fever_nli")
-            train_set = dataset['train']
-            val_set = dataset['validation']
-            test_set = dataset['test']
+            train_set = dataset['train'].remove_columns(['wsd', 'srl'])
+            val_set = dataset['validation'].remove_columns(['wsd', 'srl'])
+            test_set = dataset['test'].remove_columns(['wsd', 'srl'])
             
         if self.use_adv_test:
             adv_testset = datasets.load_dataset("iperbole/adversarial_fever_nli")
